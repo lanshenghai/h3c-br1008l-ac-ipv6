@@ -33,7 +33,7 @@ Wi‑Fi 客户端  ← 期望拿到全局 IPv6 (如 240e:…)
 | **R011** | —（官方原厂） | 无本仓库补丁。AC 模式下常见：`accept_ra` 不当 → 学不到上游 RA；缺 `/var/dhcp6pd.conf` → `radvd` 无真实 Prefix |
 | **R012** | ← R011 | 首次修复包：① Option A（AC 从 `lan1` 收 RA）；② `etc/rc` **晚启动钩子**（周期性/`rc` 延迟：`accept_ra=2`、写 pdconf、`cm dhcp6c_get`）；③ 默认配置倾向 `ipv6enable=1`、关闭无用 igmpsnoop。局限：偏开机路径，**Web 关→开 IPv6 不一定重新武装** |
 | **R013** | ← R012 | ① 去掉 `etc/rc` 轮询式钩子；② 改为包装 `/bin/ipv6rahandle` 的**事件钩子**（开机或 Web 启用 IPv6 都会再跑）；③ arm 改为 `expr`，修复设备 ash 不支持 `$((arith))` 导致钩子秒退；④ GUI 关→开 IPv6 后可自动恢复 |
-| **R014** | ← R013 | 运营商/拨号 **更换 IPv6 前缀** 时：按默认路由 `src` 选当前可达 `/64` 写 pdconf，并后台监视前缀变化（避免 `lan1` 残留旧地址 + `radvd` 仍广播旧 Prefix，客户端卡在旧前缀上） |
+| **R014** | ← R013 | ① 运营商/拨号 **更换 IPv6 前缀** 时：按默认路由 `src` 选当前可达 `/64` 写 pdconf，并后台监视前缀变化；② 换号时先发 **旧前缀 Preferred Lifetime=0** 的 RA（作废），再切到新前缀，避免 Windows 新旧地址都 Preferred、出站仍走旧源地址 |
 
 **推荐刷 [`firmware/HM1A0V100R014.bin`](firmware/HM1A0V100R014.bin)。**  
 当前仓库里的 `HM1A0V100R012.bin` / `R013.bin` 与 `R014.bin` **内容相同**（仅为旧文件名兼容）。设备上的版本字符串是 **R014**。
@@ -119,7 +119,7 @@ AC 模式补丁要点（当前 R014）：
    - 按默认路由 `src` 选当前 `/64`，写 `/var/dhcp6pd.conf`  
    - `cm dhcp6c_get` 刷新 `radvd`  
 3. arm 用 `expr`（设备 ash **不支持** `$((…))`）  
-4. **前缀更换监视**：运营商换 PD 后，自动把 `radvd` 切到新前缀（避免客户端卡在旧 `240e:`）  
+4. **前缀更换监视**：运营商换 PD 后，先发旧前缀 `Preferred Lifetime=0` 作废 RA，再把 `radvd` 切到新前缀（避免客户端卡在旧 `240e:`）  
 
 **不需要**软路由侧热补丁 / watchdog。
 
