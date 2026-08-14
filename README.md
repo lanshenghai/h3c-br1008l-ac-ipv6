@@ -33,9 +33,10 @@ Wi‑Fi 客户端  ← 期望拿到全局 IPv6 (如 240e:…)
 | **R011** | —（官方原厂） | 无本仓库补丁。AC 模式下常见：`accept_ra` 不当 → 学不到上游 RA；缺 `/var/dhcp6pd.conf` → `radvd` 无真实 Prefix |
 | **R012** | ← R011 | 首次修复包：① Option A（AC 从 `lan1` 收 RA）；② `etc/rc` **晚启动钩子**（周期性/`rc` 延迟：`accept_ra=2`、写 pdconf、`cm dhcp6c_get`）；③ 默认配置倾向 `ipv6enable=1`、关闭无用 igmpsnoop。局限：偏开机路径，**Web 关→开 IPv6 不一定重新武装** |
 | **R013** | ← R012 | ① 去掉 `etc/rc` 轮询式钩子；② 改为包装 `/bin/ipv6rahandle` 的**事件钩子**（开机或 Web 启用 IPv6 都会再跑）；③ arm 改为 `expr`，修复设备 ash 不支持 `$((arith))` 导致钩子秒退；④ GUI 关→开 IPv6 后可自动恢复 |
-| **R014** | ← R013 | ① 运营商/拨号 **更换 IPv6 前缀** 时：按默认路由 `src` 选当前可达 `/64` 写 pdconf，并后台监视前缀变化；② 换号时先发 **旧前缀 Preferred Lifetime=0** 的 RA（作废），再切到新前缀，避免 Windows 新旧地址都 Preferred、出站仍走旧源地址 |
+| **R014** | ← R013 | 运营商/拨号 **更换 IPv6 前缀** 时：按默认路由 `src` 选当前 `/64` 写 pdconf，并后台监视；换号时对**上一个**旧前缀发作废 RA（Preferred=0，约 3s） |
+| **R015** | ← R014 | 换号时对 **pdconf 旧值 + lan1 上所有旧全局 /64** 连发作废 RA（Preferred=0，约 30s）；监视间隔 15s，更适合软路由频繁断电 |
 
-**推荐刷 [`firmware/HM1A0V100R014.bin`](firmware/HM1A0V100R014.bin)。**  
+**推荐刷 [`firmware/HM1A0V100R015.bin`](firmware/HM1A0V100R015.bin)。**  
 `HM1A0V100R012.bin` / `R013.bin` / `R014.bin` 是**不同阶段的真实镜像**（功能按上表递增），不要混用文件名与版本能力。
 
 ---
@@ -106,12 +107,12 @@ AC 侧 `ipv6rahandle` 收到 RA 后 mainly 更新 `/var/rainfo`、`/var/ramtu`�
 
 ### 文件
 
-- [`firmware/HM1A0V100R014.bin`](firmware/HM1A0V100R014.bin)（推荐，当前）  
-- [`firmware/HM1A0V100R013.bin`](firmware/HM1A0V100R013.bin) / [`HM1A0V100R012.bin`](firmware/HM1A0V100R012.bin)（历史版本，功能见上表；**内容与 R014 不同**）
+- [`firmware/HM1A0V100R015.bin`](firmware/HM1A0V100R015.bin)（推荐，当前）  
+- [`firmware/HM1A0V100R014.bin`](firmware/HM1A0V100R014.bin) / `R013.bin` / `R012.bin`（历史版本，功能见上表）
 
 基于官方 `HM1A0V100R011` 改包；各 `.bin` 内版本头与文件名一致，并已按设备校验方式重签 payload checksum。
 
-AC 模式补丁要点（当前 R014）：
+AC 模式补丁要点（当前 R015）：
 
 1. **Option A**：`ipv6rahandle` 在 AC 模式下从 `lan1` 收上游 RA（路由/PPPoE 仍走原路径）  
 2. **事件钩子**：包装 `/bin/ipv6rahandle`，每次 **启用 IPv6**（开机或 Web）时自动：  
@@ -119,7 +120,7 @@ AC 模式补丁要点（当前 R014）：
    - 按默认路由 `src` 选当前 `/64`，写 `/var/dhcp6pd.conf`  
    - `cm dhcp6c_get` 刷新 `radvd`  
 3. arm 用 `expr`（设备 ash **不支持** `$((…))`）  
-4. **前缀更换监视**：运营商换 PD 后，先发旧前缀 `Preferred Lifetime=0` 作废 RA，再把 `radvd` 切到新前缀（避免客户端卡在旧 `240e:`）  
+4. **前缀更换 + 全量作废**：检测到新前缀后，对 pdconf 旧值与 `lan1` 上所有旧 `/64` 发作废 RA（约 30s），再刷新 `radvd`  
 
 **不需要**软路由侧热补丁 / watchdog。
 
@@ -129,7 +130,7 @@ AC 模式补丁要点（当前 R014）：
 
 1. **GUI 启用 IPv6**（见上文「前提」）  
 2. 浏览器打开 AC 管理页 → **本地升级 / 固件升级**  
-3. 选择 `firmware/HM1A0V100R014.bin`，等待升级完成并重启  
+3. 选择 `firmware/HM1A0V100R015.bin`，等待升级完成并重启  
 4. 开机后约 **1–2 分钟**（等上游 RA + arm 脚本）  
 5. 验证：
    - AC：`lan1` 有全局 IPv6；`/var/radvd.conf` 中 `prefix` 为真实前缀（非全 0）  
