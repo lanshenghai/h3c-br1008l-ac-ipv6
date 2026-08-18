@@ -34,7 +34,7 @@ Wi‑Fi 客户端  ← 期望拿到全局 IPv6 (如 240e:…)
 | **R012** | ← R011 | 首次修复包：① Option A（AC 从 `lan1` 收 RA）；② `etc/rc` **晚启动钩子**（周期性/`rc` 延迟：`accept_ra=2`、写 pdconf、`cm dhcp6c_get`）；③ 默认配置倾向 `ipv6enable=1`、关闭无用 igmpsnoop。局限：偏开机路径，**Web 关→开 IPv6 不一定重新武装** |
 | **R013** | ← R012 | ① 去掉 `etc/rc` 轮询式钩子；② 改为包装 `/bin/ipv6rahandle` 的**事件钩子**（开机或 Web 启用 IPv6 都会再跑）；③ arm 改为 `expr`，修复设备 ash 不支持 `$((arith))` 导致钩子秒退；④ GUI 关→开 IPv6 后可自动恢复 |
 | **R014** | ← R013 | 运营商/拨号 **更换 IPv6 前缀** 时：按默认路由 `src` 选当前 `/64` 写 pdconf，并后台监视；换号时对**上一个**旧前缀发作废 RA（Preferred=0，约 3s） |
-| **R015** | ← R014 | 换号时对 **pdconf 旧值 + lan1 上所有旧全局 /64** 连发作废 RA（约 30s）；监视 15s；**仅在已有旧前缀时**才 `dep_all`；启动先 `accept_ra=2` 并等待上游 RA 5s |
+| **R015** | ← R014 | 换号时对 **pdconf 旧值 + lan1 上所有旧全局 /64** 连发作废 RA（约 30s）；监视 15s；**仅在已有旧前缀时**才 `dep_all`；**职责拆分**：`etc/rc` 只启 `keep_ra`，`ipv6rahandle` 包装器只启 `arm`；两脚本均有 PID 单例锁 |
 
 **推荐刷 [`firmware/HM1A0V100R015.bin`](firmware/HM1A0V100R015.bin)。**  
 `HM1A0V100R012.bin` / `R013.bin` / `R014.bin` 是**不同阶段的真实镜像**（功能按上表递增），不要混用文件名与版本能力。
@@ -115,10 +115,9 @@ AC 侧 `ipv6rahandle` 收到 RA 后 mainly 更新 `/var/rainfo`、`/var/ramtu`�
 AC 模式补丁要点（当前 R015）：
 
 1. **Option A**：`ipv6rahandle` 在 AC 模式下从 `lan1` 收上游 RA（路由/PPPoE 仍走原路径）  
-2. **事件钩子**：包装 `/bin/ipv6rahandle`，每次 **启用 IPv6**（开机或 Web）时自动：  
-   - `accept_ra=2`  
-   - 按默认路由 `src` 选当前 `/64`，写 `/var/dhcp6pd.conf`  
-   - `cm dhcp6c_get` 刷新 `radvd`  
+2. **职责拆分**（无重复进程）：  
+   - `etc/rc` → `ac_ipv6_keep_ra.sh`：开机即维持 `accept_ra=2`  
+   - `/bin/ipv6rahandle` 包装器 → `ac_ipv6_mode1_arm.sh`：每次 **启用 IPv6**（开机或 Web 关→开）写 pdconf、`cm dhcp6c_get`、监视前缀变更  
 3. arm 用 `expr`（设备 ash **不支持** `$((…))`）  
 4. **前缀更换 + 全量作废**：检测到新前缀后，对 pdconf 旧值与 `lan1` 上所有旧 `/64` 发作废 RA（约 30s），再刷新 `radvd`  
 
